@@ -1,300 +1,902 @@
 "use client";
 
-import Link from "next/link";
-import { useAuth } from "@/hooks/use-auth";
+import { useState, useRef, useCallback } from "react";
 
-/* ── Mock data (replace with Supabase queries) ── */
-const STATS = [
-  { label: "Total Campaigns", value: "12", color: "#0F172A", iconColor: "#94A3B8", icon: "briefcase" },
-  { label: "Emails Generated", value: "48", color: "#4F46E5", iconColor: "#4F46E5", icon: "mail"     },
-  { label: "Emails Sent",      value: "31", color: "#0D9488", iconColor: "#0D9488", icon: "send"     },
-  { label: "Failed",           value: "3",  color: "#E11D48", iconColor: "#E11D48", icon: "alert"    },
-];
+/* ── Types ─────────────────────────────────────────── */
+interface HrEntry {
+  id: string;
+  email: string;
+  jd: string;
+  jdOpen: boolean;
+}
 
-const CAMPAIGNS = [
-  {
-    id: "1", name: "May Applications",
-    meta: "12 emails · 8 sent · Created May 10",
-    pct: 67, strip: "#4F46E5", progressColor: "#0D9488",
-    status: "Active", statusBg: "#EEF2FF", statusColor: "#4F46E5",
-  },
-  {
-    id: "2", name: "Saudi Companies",
-    meta: "45 emails · 12 sent · Created May 8",
-    pct: 27, strip: "#0D9488", progressColor: "#0D9488",
-    status: "Active", statusBg: "#EEF2FF", statusColor: "#4F46E5",
-  },
-  {
-    id: "3", name: "Tech Startups",
-    meta: "8 emails · 2 sent · Created May 5",
-    pct: 25, strip: "#D97706", progressColor: "#D97706",
-    status: "Draft", statusBg: "#FFFBEB", statusColor: "#D97706",
-  },
-];
+interface GeneratedEmail {
+  id: string;
+  hrEmail: string;
+  subject: string;
+  body: string;
+  status: "ready" | "sent";
+  editing: boolean;
+  editSubject: string;
+  editBody: string;
+}
 
-/* ── Icons ── */
-function BriefcaseIcon() {
-  return <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 0 0 .75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 0 0-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0 1 12 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 0 1-.673-.38m0 0A2.18 2.18 0 0 1 3 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 0 1 3.413-.387m7.5 0V5.25A2.25 2.25 0 0 0 13.5 3h-3a2.25 2.25 0 0 0-2.25 2.25v.894m7.5 0a48.667 48.667 0 0 0-7.5 0M12 12.75h.008v.008H12v-.008Z" /></svg>;
-}
-function MailIcon() {
-  return <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>;
-}
-function SendIcon() {
-  return <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>;
-}
-function AlertIcon() {
-  return <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>;
-}
-function CalendarIcon() {
-  return <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>;
-}
+type Phase = "input" | "generating" | "done";
+
+/* ── Icons ─────────────────────────────────────────── */
 function PlusIcon() {
-  return <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>;
+  return <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>;
 }
-function BulbIcon() {
-  return <svg width="24" height="24" fill="none" stroke="#4F46E5" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 0 0 1.5-.189m-1.5.189a6.01 6.01 0 0 1-1.5-.189m3.75 7.478a12.06 12.06 0 0 1-4.5 0m3.75 2.383a14.406 14.406 0 0 1-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 1 0-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" /></svg>;
+function TrashIcon() {
+  return <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>;
 }
-function LargePlusIcon() {
-  return <svg width="24" height="24" fill="none" stroke="white" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>;
+function SparklesIcon({ size = 16 }: { size?: number }) {
+  return <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z" /></svg>;
 }
-
-const STAT_ICON: Record<string, React.ReactNode> = {
-  briefcase: <BriefcaseIcon />,
-  mail:      <MailIcon />,
-  send:      <SendIcon />,
-  alert:     <AlertIcon />,
-};
-
-function greeting(name: string) {
-  const h = new Date().getHours();
-  const salutation = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
-  return `${salutation}, ${name.split(" ")[0]}! 👋`;
+function SendIcon({ size = 14 }: { size?: number }) {
+  return <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>;
 }
-
-function todayLabel() {
-  return new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+function PencilIcon() {
+  return <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" /></svg>;
+}
+function UploadIcon() {
+  return <svg width="28" height="28" fill="none" stroke="#6366F1" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>;
+}
+function CheckIcon() {
+  return <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>;
+}
+function RefreshIcon() {
+  return <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>;
 }
 
-export default function DashboardPage() {
-  const { user } = useAuth();
-  /* Toggle this to false to preview the empty state */
-  const hasCampaigns = CAMPAIGNS.length > 0;
+/* ── Helpers ────────────────────────────────────────── */
+function uid() {
+  return Math.random().toString(36).slice(2, 9);
+}
+
+function isValidEmail(v: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+}
+
+/* ── Step timeline dot ──────────────────────────────── */
+const STEP_COLORS = ["#6366F1", "#0D9488", "#F97316", "#8B5CF6", "#22C55E"];
+
+function StepDot({ n, active }: { n: number; active: boolean }) {
+  const color = STEP_COLORS[n - 1];
+  return (
+    <div style={{
+      width: 36, height: 36, borderRadius: "50%",
+      background: active ? color : "rgba(255,255,255,0.06)",
+      border: active ? "none" : "1.5px solid rgba(255,255,255,0.12)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      flexShrink: 0,
+      transition: "background 0.2s",
+    }}>
+      <span style={{ fontSize: 14, fontWeight: 700, color: active ? "#fff" : "rgba(255,255,255,0.3)" }}>
+        {n}
+      </span>
+    </div>
+  );
+}
+
+/* ── Section card wrapper ───────────────────────────── */
+function SectionCard({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{
+      background: "rgba(255,255,255,0.04)",
+      border: "1px solid rgba(255,255,255,0.08)",
+      borderRadius: 14,
+      padding: "24px 28px",
+    }}>
+      <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.12em", marginBottom: 16 }}>
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+/* ── HR entry row ───────────────────────────────────── */
+function HrEntryRow({
+  entry, onChange, onRemove, canRemove,
+}: {
+  entry: HrEntry;
+  onChange: (id: string, patch: Partial<HrEntry>) => void;
+  onRemove: (id: string) => void;
+  canRemove: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <input
+          type="email"
+          value={entry.email}
+          onChange={(e) => onChange(entry.id, { email: e.target.value })}
+          placeholder="hr@company.com"
+          style={{
+            flex: 1, height: 42,
+            background: "rgba(255,255,255,0.06)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: 8,
+            padding: "0 14px",
+            fontSize: 14, color: "#F1F5F9",
+            outline: "none",
+          }}
+          onFocus={(e) => { e.currentTarget.style.border = "1px solid #6366F1"; }}
+          onBlur={(e) => { e.currentTarget.style.border = "1px solid rgba(255,255,255,0.1)"; }}
+        />
+        <button
+          onClick={() => onChange(entry.id, { jdOpen: !entry.jdOpen })}
+          style={{
+            height: 42, padding: "0 14px",
+            background: entry.jdOpen ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.06)",
+            border: entry.jdOpen ? "1px solid rgba(99,102,241,0.4)" : "1px solid rgba(255,255,255,0.1)",
+            borderRadius: 8,
+            fontSize: 12, fontWeight: 600,
+            color: entry.jdOpen ? "#818CF8" : "rgba(255,255,255,0.5)",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {entry.jdOpen ? "− JD" : "+ Add JD"}
+        </button>
+        {canRemove && (
+          <button
+            onClick={() => onRemove(entry.id)}
+            style={{
+              width: 36, height: 36,
+              background: "none", border: "none",
+              color: "rgba(255,255,255,0.25)",
+              cursor: "pointer", borderRadius: 6,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#F87171"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.25)"; }}
+          >
+            <TrashIcon />
+          </button>
+        )}
+      </div>
+
+      {entry.jdOpen && (
+        <textarea
+          value={entry.jd}
+          onChange={(e) => onChange(entry.id, { jd: e.target.value })}
+          placeholder={`Paste the job description for ${entry.email.split("@")[1]?.split(".")[0] || "this company"}…`}
+          rows={3}
+          style={{
+            width: "100%",
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(99,102,241,0.3)",
+            borderRadius: 8,
+            padding: "10px 14px",
+            fontSize: 13, color: "#CBD5E1", lineHeight: 1.6,
+            resize: "vertical",
+            outline: "none",
+          }}
+          onFocus={(e) => { e.currentTarget.style.border = "1px solid #6366F1"; }}
+          onBlur={(e) => { e.currentTarget.style.border = "1px solid rgba(99,102,241,0.3)"; }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Email card ─────────────────────────────────────── */
+function EmailCard({
+  email, onSend, onEdit, onSave, onCancelEdit,
+}: {
+  email: GeneratedEmail;
+  onSend: (id: string) => void;
+  onEdit: (id: string) => void;
+  onSave: (id: string, subject: string, body: string) => void;
+  onCancelEdit: (id: string) => void;
+}) {
+  const [sending, setSending] = useState(false);
+
+  async function handleSend() {
+    setSending(true);
+    try {
+      await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draftId: email.id, to: email.hrEmail, subject: email.subject, body: email.body }),
+      });
+    } finally {
+      setSending(false);
+      onSend(email.id);
+    }
+  }
+
+  const isSent = email.status === "sent";
 
   return (
-    <div style={{ background: "#F8FAFC", minHeight: "100vh", padding: "36px 40px", position: "relative" }}>
-
-      {/* ── Top bar ── */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0F172A", lineHeight: 1.2 }}>
-            {greeting(user?.name ?? "Humna")}
-          </h1>
-          <p style={{ fontSize: 14, color: "#475569", marginTop: 4 }}>
-            {hasCampaigns ? "Here's your application overview" : "Let's get your job search started"}
-          </p>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ color: "#94A3B8" }}><CalendarIcon /></span>
-            <span style={{ fontSize: 13, color: "#94A3B8" }}>{todayLabel()}</span>
+    <div style={{
+      background: isSent ? "rgba(13,148,136,0.06)" : "rgba(255,255,255,0.04)",
+      border: isSent ? "1px solid rgba(13,148,136,0.2)" : "1px solid rgba(255,255,255,0.08)",
+      borderRadius: 12,
+      padding: "18px 20px",
+      transition: "all 0.2s",
+    }}>
+      {/* Header row */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "#F1F5F9" }}>{email.hrEmail}</span>
+            {isSent ? (
+              <span style={{
+                fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 99,
+                background: "rgba(13,148,136,0.15)", color: "#34D399",
+              }}>
+                Sent ✓
+              </span>
+            ) : (
+              <span style={{
+                fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 99,
+                background: "rgba(99,102,241,0.15)", color: "#818CF8",
+              }}>
+                Ready
+              </span>
+            )}
           </div>
-          <Link
-            href="/dashboard/new-campaign"
+          {!email.editing && (
+            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {email.subject}
+            </p>
+          )}
+        </div>
+
+        {!isSent && !email.editing && (
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <button
+              onClick={() => onEdit(email.id)}
+              style={{
+                display: "flex", alignItems: "center", gap: 4,
+                height: 32, padding: "0 12px",
+                background: "none", border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 6, fontSize: 12, color: "rgba(255,255,255,0.6)", cursor: "pointer",
+              }}
+            >
+              <PencilIcon /> Edit
+            </button>
+            <button
+              onClick={handleSend}
+              disabled={sending}
+              style={{
+                display: "flex", alignItems: "center", gap: 4,
+                height: 32, padding: "0 14px",
+                background: sending ? "rgba(99,102,241,0.4)" : "#6366F1",
+                border: "none", borderRadius: 6,
+                fontSize: 12, fontWeight: 600, color: "#fff", cursor: sending ? "not-allowed" : "pointer",
+              }}
+            >
+              <SendIcon /> {sending ? "Sending…" : "Send"}
+            </button>
+          </div>
+        )}
+
+        {isSent && (
+          <button
+            onClick={() => onEdit(email.id)}
             style={{
-              display: "flex", alignItems: "center", gap: 6,
-              height: 38, padding: "0 18px",
-              background: "#4F46E5", borderRadius: 8,
-              fontSize: 13, fontWeight: 600, color: "#FFFFFF",
-              textDecoration: "none",
+              display: "flex", alignItems: "center", gap: 4,
+              height: 32, padding: "0 12px",
+              background: "none", border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 6, fontSize: 12, color: "rgba(255,255,255,0.4)", cursor: "pointer",
             }}
           >
-            <PlusIcon />
-            New Campaign
-          </Link>
-        </div>
+            Read full
+          </button>
+        )}
       </div>
 
-      {/* ── Empty state ── */}
-      {!hasCampaigns && (
-        <div style={{
-          display: "flex", flexDirection: "column", alignItems: "center",
-          justifyContent: "center", textAlign: "center",
-          paddingTop: 80, paddingBottom: 80,
+      {/* Body / edit area */}
+      {!email.editing && (
+        <p style={{
+          marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.45)",
+          lineHeight: 1.7, maxHeight: "3.4em", overflow: "hidden",
         }}>
-          {/* Envelope illustration */}
-          <div style={{
-            width: 80, height: 80, borderRadius: 20,
-            background: "#EEF2FF",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            marginBottom: 24,
-          }}>
-            <svg width="40" height="40" fill="none" stroke="#4F46E5" strokeWidth={1.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
-            </svg>
-          </div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: "#0F172A", marginBottom: 8 }}>
-            No campaigns yet
-          </h2>
-          <p style={{ fontSize: 14, color: "#475569", maxWidth: 360, lineHeight: 1.6, marginBottom: 8 }}>
-            Upload your CV on your profile, then create a campaign to start sending AI-powered job application emails.
-          </p>
-          <p style={{ fontSize: 13, color: "#94A3B8", marginBottom: 28 }}>Takes less than 2 minutes to set up.</p>
-          <div style={{ display: "flex", gap: 10 }}>
-            <Link
-              href="/dashboard/profile"
-              style={{
-                height: 42, padding: "0 20px", lineHeight: "42px",
-                background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 8,
-                fontSize: 13, fontWeight: 600, color: "#475569",
-                textDecoration: "none",
-              }}
-            >
-              Upload CV first
-            </Link>
-            <Link
-              href="/dashboard/new-campaign"
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                height: 42, padding: "0 20px",
-                background: "#4F46E5", borderRadius: 8,
-                fontSize: 13, fontWeight: 600, color: "#FFFFFF",
-                textDecoration: "none",
-              }}
-            >
-              <PlusIcon /> Create first campaign
-            </Link>
-          </div>
-        </div>
+          {email.body}
+        </p>
       )}
 
-      {/* ── Stats cards (only when data exists) ── */}
-      {hasCampaigns && (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 32 }}>
-        {STATS.map(({ label, value, color, iconColor, icon }) => (
-          <div key={label} style={{
-            background: "#FFFFFF",
-            borderRadius: 12,
-            border: "0.5px solid #E2E8F0",
-            padding: "20px 24px",
-            height: 96,
-            display: "flex", flexDirection: "column", justifyContent: "space-between",
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: "#94A3B8" }}>{label}</span>
-              <span style={{ color: iconColor }}>{STAT_ICON[icon]}</span>
-            </div>
-            <p style={{ fontSize: 32, fontWeight: 700, color, lineHeight: 1 }}>{value}</p>
-          </div>
-        ))}
-      </div>
-      )}
-
-      {/* ── Recent campaigns (only when data exists) ── */}
-      {hasCampaigns && (
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: "#0F172A" }}>Recent Campaigns</h2>
-          <Link href="/dashboard/history" style={{ fontSize: 13, color: "#4F46E5", textDecoration: "none" }}>
-            View all →
-          </Link>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {CAMPAIGNS.map((c) => (
-            <div key={c.id} style={{
-              background: "#FFFFFF",
-              borderRadius: 12,
-              border: "0.5px solid #E2E8F0",
-              height: 68,
-              display: "flex", alignItems: "center",
-              overflow: "hidden",
-            }}>
-              {/* Color strip */}
-              <div style={{ width: 4, height: "100%", background: c.strip, flexShrink: 0, borderRadius: "2px 0 0 2px" }} />
-
-              {/* Name + meta */}
-              <div style={{ marginLeft: 16, flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 14, fontWeight: 600, color: "#0F172A" }}>{c.name}</p>
-                <p style={{ fontSize: 12, color: "#94A3B8", marginTop: 2 }}>{c.meta}</p>
-              </div>
-
-              {/* Progress bar */}
-              <div style={{ width: 180, flexShrink: 0, marginRight: 24 }}>
-                <p style={{ fontSize: 11, color: "#94A3B8", marginBottom: 4 }}>{c.pct}% sent</p>
-                <div style={{ height: 4, background: "#E2E8F0", borderRadius: 2, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${c.pct}%`, background: c.progressColor, borderRadius: 2 }} />
-                </div>
-              </div>
-
-              {/* Status pill */}
-              <div style={{ marginRight: 20, flexShrink: 0 }}>
-                <span style={{
-                  fontSize: 11, fontWeight: 500,
-                  background: c.statusBg, color: c.statusColor,
-                  borderRadius: 99, padding: "3px 10px",
-                  whiteSpace: "nowrap",
-                }}>
-                  {c.status}
-                </span>
-              </div>
-
-              {/* View link */}
-              <Link
-                href={`/dashboard/campaign/${c.id}`}
-                style={{ fontSize: 13, color: "#4F46E5", textDecoration: "none", marginRight: 20, flexShrink: 0 }}
-              >
-                View →
-              </Link>
-            </div>
-          ))}
-        </div>
-      </div>
-      )}
-
-      {/* ── Quick tips ── */}
-      <div style={{
-        background: "#EEF2FF",
-        border: "0.5px solid #C7D2FE",
-        borderRadius: 12,
-        padding: "20px 24px",
-        display: "flex", alignItems: "flex-start", gap: 16,
-      }}>
-        <div style={{ flexShrink: 0, marginTop: 2 }}><BulbIcon /></div>
-        <div>
-          <p style={{ fontSize: 13, fontWeight: 600, color: "#4F46E5" }}>Pro tip</p>
-          <p style={{ fontSize: 13, color: "#3730A3", marginTop: 4 }}>
-            Add a job description per company email to get 3× more personalised emails from AI.
-          </p>
-          <Link
-            href="/dashboard/new-campaign"
-            style={{ display: "inline-block", fontSize: 13, fontWeight: 600, color: "#4F46E5", marginTop: 8, textDecoration: "none" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = "underline"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = "none"; }}
-          >
-            Add job descriptions →
-          </Link>
-        </div>
-      </div>
-
-      {/* ── FAB ── */}
-      <div style={{ position: "fixed", bottom: 32, right: 40, zIndex: 50 }}>
-        <div style={{ position: "relative" }}>
-          <Link
-            href="/dashboard/new-campaign"
-            title="New Campaign"
+      {email.editing && (
+        <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          <input
+            type="text"
+            defaultValue={email.editSubject}
+            id={`subj-${email.id}`}
             style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: 56, height: 56,
-              background: "#4F46E5",
-              borderRadius: "50%",
-              textDecoration: "none",
+              width: "100%", height: 40,
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(99,102,241,0.4)",
+              borderRadius: 8, padding: "0 12px",
+              fontSize: 13, color: "#F1F5F9", outline: "none",
             }}
-          >
-            <LargePlusIcon />
-          </Link>
+            placeholder="Subject"
+          />
+          <textarea
+            defaultValue={email.editBody}
+            id={`body-${email.id}`}
+            rows={7}
+            style={{
+              width: "100%",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(99,102,241,0.4)",
+              borderRadius: 8, padding: "10px 12px",
+              fontSize: 13, color: "#CBD5E1", lineHeight: 1.7,
+              resize: "vertical", outline: "none",
+            }}
+          />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              onClick={() => onCancelEdit(email.id)}
+              style={{
+                height: 34, padding: "0 14px",
+                background: "none", border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 6, fontSize: 12, color: "rgba(255,255,255,0.5)", cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                const subj = (document.getElementById(`subj-${email.id}`) as HTMLInputElement).value;
+                const body = (document.getElementById(`body-${email.id}`) as HTMLTextAreaElement).value;
+                onSave(email.id, subj, body);
+              }}
+              style={{
+                display: "flex", alignItems: "center", gap: 4,
+                height: 34, padding: "0 16px",
+                background: "#6366F1", border: "none",
+                borderRadius: 6, fontSize: 12, fontWeight: 600,
+                color: "#fff", cursor: "pointer",
+              }}
+            >
+              <CheckIcon /> Save
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Main page ──────────────────────────────────────── */
+export default function HireInboxPage() {
+  const [entries, setEntries] = useState<HrEntry[]>([
+    { id: uid(), email: "", jd: "", jdOpen: false },
+  ]);
+  const [cvFile,      setCvFile]      = useState<File | null>(null);
+  const [cvWordCount, setCvWordCount] = useState<number | null>(null);
+  const [cvUploading, setCvUploading] = useState(false);
+  const [portfolio,   setPortfolio]   = useState("");
+  const [phase,       setPhase]       = useState<Phase>("input");
+  const [progress,    setProgress]    = useState(0);
+  const [emails,      setEmails]      = useState<GeneratedEmail[]>([]);
+  const [genError,    setGenError]    = useState("");
+  const [isDragging,  setIsDragging]  = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /* ── Entry helpers ── */
+  function addEntry() {
+    setEntries((prev) => [...prev, { id: uid(), email: "", jd: "", jdOpen: false }]);
+  }
+
+  function updateEntry(id: string, patch: Partial<HrEntry>) {
+    setEntries((prev) => prev.map((e) => e.id === id ? { ...e, ...patch } : e));
+  }
+
+  function removeEntry(id: string) {
+    setEntries((prev) => prev.filter((e) => e.id !== id));
+  }
+
+  /* ── CV upload ── */
+  const uploadCv = useCallback(async (file: File) => {
+    setCvUploading(true);
+    setCvFile(file);
+    try {
+      const fd = new FormData();
+      fd.append("cv", file);
+      const res = await fetch("/api/upload-cv", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setCvWordCount(data.wordCount ?? null);
+    } finally {
+      setCvUploading(false);
+    }
+  }, []);
+
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) uploadCv(file);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) uploadCv(file);
+  }
+
+  /* ── Generate ── */
+  const validEntries = entries.filter((e) => isValidEmail(e.email));
+
+  async function handleGenerate() {
+    if (validEntries.length === 0) return;
+    setPhase("generating");
+    setProgress(0);
+    setGenError("");
+    setEmails([]);
+
+    try {
+      const res = await fetch("/api/generate-emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          drafts: validEntries.map((e) => ({ hrEmail: e.email.trim(), jd: e.jd || undefined })),
+          portfolioUrl: portfolio || undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setGenError(d.error ?? "Something went wrong.");
+        setPhase("input");
+        return;
+      }
+
+      const data = await res.json();
+      const generated: GeneratedEmail[] = (data.generated ?? []).map((g: {
+        hrEmail: string; subject: string; body: string;
+      }) => ({
+        id: uid(),
+        hrEmail: g.hrEmail,
+        subject: g.subject,
+        body: g.body,
+        status: "ready" as const,
+        editing: false,
+        editSubject: g.subject,
+        editBody: g.body,
+      }));
+
+      /* Reveal cards one by one for the "streaming" feel */
+      for (let i = 0; i < generated.length; i++) {
+        await new Promise((r) => setTimeout(r, 320));
+        setEmails((prev) => [...prev, generated[i]]);
+        setProgress(Math.round(((i + 1) / generated.length) * 100));
+      }
+
+      setPhase("done");
+    } catch {
+      setGenError("Network error. Please try again.");
+      setPhase("input");
+    }
+  }
+
+  /* ── Email card handlers ── */
+  function handleSend(id: string) {
+    setEmails((prev) => prev.map((e) => e.id === id ? { ...e, status: "sent" } : e));
+  }
+
+  function handleEdit(id: string) {
+    setEmails((prev) => prev.map((e) =>
+      e.id === id ? { ...e, editing: true, editSubject: e.subject, editBody: e.body } : e
+    ));
+  }
+
+  function handleSave(id: string, subject: string, body: string) {
+    setEmails((prev) => prev.map((e) =>
+      e.id === id ? { ...e, subject, body, editSubject: subject, editBody: body, editing: false } : e
+    ));
+  }
+
+  function handleCancelEdit(id: string) {
+    setEmails((prev) => prev.map((e) => e.id === id ? { ...e, editing: false } : e));
+  }
+
+  function handleReset() {
+    setEntries([{ id: uid(), email: "", jd: "", jdOpen: false }]);
+    setCvFile(null);
+    setCvWordCount(null);
+    setPortfolio("");
+    setPhase("input");
+    setProgress(0);
+    setEmails([]);
+    setGenError("");
+  }
+
+  /* ── Derived ── */
+  const sentCount  = emails.filter((e) => e.status === "sent").length;
+  const allSent    = emails.length > 0 && sentCount === emails.length;
+  const withJd     = entries.filter((e) => e.jd.trim()).length;
+  const isGenerating = phase === "generating";
+
+  const canGenerate = validEntries.length > 0 && !isGenerating;
+
+  /* ── Step active states ── */
+  const step1Active = true;
+  const step2Active = true;
+  const step3Active = validEntries.length > 0;
+  const step4Active = emails.length > 0;
+  const step5Active = allSent;
+
+  return (
+    <>
+      <style>{`
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
+        .gen-pulse { animation: pulse-dot 1.2s ease-in-out infinite; }
+        input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.22); }
+        * { box-sizing: border-box; }
+      `}</style>
+
+      <div style={{
+        minHeight: "100vh",
+        background: "#0F1117",
+        padding: "48px 24px 80px",
+        fontFamily: "inherit",
+      }}>
+        {/* ── Page title ── */}
+        <div style={{ maxWidth: 720, margin: "0 auto 40px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+            <SparklesIcon size={20} />
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: "#F1F5F9", margin: 0 }}>HireInbox</h1>
+          </div>
+          <p style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", margin: 0 }}>
+            Add HR emails → upload CV → generate → send. Done.
+          </p>
+        </div>
+
+        <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 0 }}>
+
+          {/* ═══════════════════════════════════════════ */}
+          {/* STEP 1 — HR Emails                         */}
+          {/* ═══════════════════════════════════════════ */}
+          <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+            {/* Timeline */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 0 }}>
+              <StepDot n={1} active={step1Active} />
+              <div style={{ width: 2, flexGrow: 1, minHeight: 32, background: "rgba(255,255,255,0.06)", marginTop: 4 }} />
+            </div>
+
+            {/* Content */}
+            <div style={{ flex: 1, paddingBottom: 28 }}>
+              <div style={{ marginBottom: 14 }}>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F5F9", margin: "0 0 2px" }}>
+                  Add HR emails + job descriptions
+                </h2>
+                <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", margin: 0 }}>
+                  Each row = one company. Paste their HR email and optionally add the JD.
+                </p>
+              </div>
+
+              <SectionCard label="HR EMAILS SECTION">
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {entries.map((entry) => (
+                    <HrEntryRow
+                      key={entry.id}
+                      entry={entry}
+                      onChange={updateEntry}
+                      onRemove={removeEntry}
+                      canRemove={entries.length > 1}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  onClick={addEntry}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    marginTop: 14, background: "none", border: "none",
+                    cursor: "pointer", fontSize: 13, fontWeight: 500,
+                    color: "#818CF8", padding: 0,
+                  }}
+                >
+                  <PlusIcon /> Add another company
+                </button>
+
+                {(validEntries.length > 0 || withJd > 0) && (
+                  <div style={{ display: "flex", gap: 16, marginTop: 12 }}>
+                    {validEntries.length > 0 && (
+                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
+                        {validEntries.length} email{validEntries.length !== 1 ? "s" : ""} added
+                      </span>
+                    )}
+                    {withJd > 0 && (
+                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
+                        {withJd} with JD
+                      </span>
+                    )}
+                  </div>
+                )}
+              </SectionCard>
+            </div>
+          </div>
+
+          {/* ═══════════════════════════════════════════ */}
+          {/* STEP 2 — Upload CV                         */}
+          {/* ═══════════════════════════════════════════ */}
+          <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <StepDot n={2} active={step2Active} />
+              <div style={{ width: 2, flexGrow: 1, minHeight: 32, background: "rgba(255,255,255,0.06)", marginTop: 4 }} />
+            </div>
+
+            <div style={{ flex: 1, paddingBottom: 28 }}>
+              <div style={{ marginBottom: 14 }}>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F5F9", margin: "0 0 2px" }}>
+                  Upload CV
+                  <span style={{
+                    marginLeft: 8, fontSize: 11, fontWeight: 500,
+                    color: "rgba(255,255,255,0.3)",
+                    background: "rgba(255,255,255,0.07)",
+                    borderRadius: 99, padding: "2px 8px",
+                  }}>+ portfolio optional</span>
+                </h2>
+                <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", margin: 0 }}>
+                  Simple drag and drop. Portfolio link is optional.
+                </p>
+              </div>
+
+              <SectionCard label="CV UPLOAD">
+                {/* Drop zone */}
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    border: isDragging ? "2px dashed #6366F1" : cvFile ? "2px solid rgba(34,197,94,0.4)" : "2px dashed rgba(255,255,255,0.12)",
+                    borderRadius: 12,
+                    padding: "32px 20px",
+                    textAlign: "center",
+                    cursor: "pointer",
+                    background: cvFile ? "rgba(34,197,94,0.05)" : isDragging ? "rgba(99,102,241,0.06)" : "rgba(255,255,255,0.02)",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  {cvUploading ? (
+                    <p style={{ fontSize: 14, color: "rgba(255,255,255,0.5)", margin: 0 }}>Uploading…</p>
+                  ) : cvFile ? (
+                    <>
+                      <div style={{ fontSize: 28, marginBottom: 6 }}>✅</div>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: "#34D399", margin: "0 0 2px" }}>
+                        {cvFile.name} uploaded
+                        {cvWordCount !== null ? ` — ${cvWordCount.toLocaleString()} words extracted` : ""}
+                      </p>
+                      <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", margin: 0 }}>Click to replace</p>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+                        <UploadIcon />
+                      </div>
+                      <p style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.6)", margin: "0 0 4px" }}>
+                        Drop your CV here or click to browse
+                      </p>
+                      <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", margin: 0 }}>
+                        PDF, DOC, DOCX · max 5 MB
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  style={{ display: "none" }}
+                  onChange={handleFileInput}
+                />
+
+                {/* Portfolio */}
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>Portfolio link</span>
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.06)", borderRadius: 99, padding: "1px 8px" }}>optional</span>
+                  </div>
+                  <input
+                    type="url"
+                    value={portfolio}
+                    onChange={(e) => setPortfolio(e.target.value)}
+                    placeholder="https://yourportfolio.dev"
+                    style={{
+                      width: "100%", height: 42,
+                      background: "rgba(255,255,255,0.06)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: 8, padding: "0 14px",
+                      fontSize: 14, color: "#F1F5F9", outline: "none",
+                    }}
+                    onFocus={(e) => { e.currentTarget.style.border = "1px solid #6366F1"; }}
+                    onBlur={(e) => { e.currentTarget.style.border = "1px solid rgba(255,255,255,0.1)"; }}
+                  />
+                </div>
+              </SectionCard>
+            </div>
+          </div>
+
+          {/* ═══════════════════════════════════════════ */}
+          {/* STEP 3 — Generate                          */}
+          {/* ═══════════════════════════════════════════ */}
+          <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <StepDot n={3} active={step3Active} />
+              <div style={{ width: 2, flexGrow: 1, minHeight: 32, background: "rgba(255,255,255,0.06)", marginTop: 4 }} />
+            </div>
+
+            <div style={{ flex: 1, paddingBottom: 28 }}>
+              <div style={{ marginBottom: 14 }}>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F5F9", margin: "0 0 2px" }}>Click Generate</h2>
+                <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", margin: 0 }}>
+                  One big button. Cards appear one by one as they finish.
+                </p>
+              </div>
+
+              {(isGenerating || phase === "done") && (
+                <SectionCard label="GENERATING...">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>
+                      {phase === "done" ? `${emails.length} / ${emails.length} done` : `${emails.length} / ${validEntries.length} done`}
+                    </span>
+                  </div>
+                  <div style={{ height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 3, overflow: "hidden" }}>
+                    <div style={{
+                      height: "100%",
+                      width: `${progress}%`,
+                      background: phase === "done" ? "#22C55E" : "#6366F1",
+                      borderRadius: 3,
+                      transition: "width 0.3s ease",
+                    }} />
+                  </div>
+
+                  {isGenerating && (
+                    <button disabled style={{
+                      width: "100%", marginTop: 16, height: 48,
+                      background: "rgba(99,102,241,0.5)",
+                      border: "none", borderRadius: 10,
+                      fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.7)",
+                      cursor: "not-allowed",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    }}>
+                      <span className="gen-pulse"><SparklesIcon /></span>
+                      Generating emails… please wait
+                    </button>
+                  )}
+                </SectionCard>
+              )}
+
+              {phase === "input" && (
+                <>
+                  {genError && (
+                    <div style={{
+                      marginBottom: 12, padding: "10px 14px",
+                      background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)",
+                      borderRadius: 8, fontSize: 13, color: "#FCA5A5",
+                    }}>
+                      {genError}
+                    </div>
+                  )}
+                  <button
+                    onClick={handleGenerate}
+                    disabled={!canGenerate}
+                    style={{
+                      width: "100%", height: 52,
+                      background: canGenerate ? "#6366F1" : "rgba(99,102,241,0.25)",
+                      border: "none", borderRadius: 12,
+                      fontSize: 15, fontWeight: 700, color: canGenerate ? "#fff" : "rgba(255,255,255,0.3)",
+                      cursor: canGenerate ? "pointer" : "not-allowed",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                      transition: "background 0.15s",
+                    }}
+                    onMouseEnter={(e) => { if (canGenerate) (e.currentTarget as HTMLElement).style.background = "#4F46E5"; }}
+                    onMouseLeave={(e) => { if (canGenerate) (e.currentTarget as HTMLElement).style.background = "#6366F1"; }}
+                  >
+                    <SparklesIcon size={18} />
+                    Generate Emails
+                  </button>
+                  {validEntries.length === 0 && (
+                    <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", textAlign: "center", marginTop: 8 }}>
+                      Add at least one valid HR email above first
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* ═══════════════════════════════════════════ */}
+          {/* STEP 4 — Read & Edit                       */}
+          {/* ═══════════════════════════════════════════ */}
+          {emails.length > 0 && (
+            <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <StepDot n={4} active={step4Active} />
+                <div style={{ width: 2, flexGrow: 1, minHeight: 32, background: "rgba(255,255,255,0.06)", marginTop: 4 }} />
+              </div>
+
+              <div style={{ flex: 1, paddingBottom: 28 }}>
+                <div style={{ marginBottom: 14 }}>
+                  <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F5F9", margin: "0 0 2px" }}>
+                    Read and edit each email
+                  </h2>
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", margin: 0 }}>
+                    Click Edit to change anything, then Save. No modals.
+                  </p>
+                </div>
+
+                <SectionCard label="GENERATED EMAILS">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {emails.map((email) => (
+                      <EmailCard
+                        key={email.id}
+                        email={email}
+                        onSend={handleSend}
+                        onEdit={handleEdit}
+                        onSave={handleSave}
+                        onCancelEdit={handleCancelEdit}
+                      />
+                    ))}
+                  </div>
+                </SectionCard>
+              </div>
+            </div>
+          )}
+
+          {/* ═══════════════════════════════════════════ */}
+          {/* STEP 5 — Done                              */}
+          {/* ═══════════════════════════════════════════ */}
+          {(phase === "done" || emails.length > 0) && (
+            <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <StepDot n={5} active={step5Active} />
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <div style={{ marginBottom: 14 }}>
+                  <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F5F9", margin: "0 0 2px" }}>
+                    Click Send on each card
+                  </h2>
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", margin: 0 }}>
+                    Email goes directly to the HR. Badge turns green "Sent ✓".
+                  </p>
+                </div>
+
+                {allSent && (
+                  <SectionCard label="ALL DONE!">
+                    <div style={{ textAlign: "center", padding: "24px 0" }}>
+                      <div style={{ fontSize: 40, marginBottom: 12 }}>🎉</div>
+                      <p style={{ fontSize: 18, fontWeight: 700, color: "#F1F5F9", margin: "0 0 4px" }}>
+                        {sentCount} email{sentCount !== 1 ? "s" : ""} sent successfully!
+                      </p>
+                      <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", margin: "0 0 24px" }}>
+                        Your applications are on their way.
+                      </p>
+                      <button
+                        onClick={handleReset}
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 6,
+                          height: 42, padding: "0 24px",
+                          background: "rgba(255,255,255,0.08)",
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          borderRadius: 8, fontSize: 13, fontWeight: 600,
+                          color: "#F1F5F9", cursor: "pointer",
+                        }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.12)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.08)"; }}
+                      >
+                        <RefreshIcon /> Start a new batch
+                      </button>
+                    </div>
+                  </SectionCard>
+                )}
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
-
-    </div>
+    </>
   );
 }
