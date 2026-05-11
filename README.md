@@ -1,3 +1,29 @@
+HireInbox — AI-Powered Job Application Email Tool
+
+HireInbox is a freemium SaaS web application that automates personalised job application emails. Upload your CV, paste bulk HR email addresses, and AI generates a unique tailored email per company — which you review, edit, and send directly from your dashboard.
+
+Built with Next.js 14, Supabase, Groq API (Llama 3.1 70B), Nodemailer + Gmail SMTP, Stripe, and Vercel.
+
+Features:
+  • CV upload with automatic PDF text extraction
+  • Bulk HR email input with optional job description per company
+  • AI generates personalised emails per company using Groq API
+  • Edit each email before sending
+  • Send directly via Gmail SMTP — no third-party email service
+  • Freemium model: 3 emails/day free, 50/day on Pro ($9/month)
+  • Stripe payments with webhook-based plan activation
+  • Full application history dashboard
+  • Daily usage reset via Vercel Cron
+
+Tech Stack:
+  Frontend  →  Next.js 14 (App Router) + Tailwind CSS
+  Database  →  Supabase (PostgreSQL + Auth)
+  AI        →  Groq API — llama-3.1-70b-versatile (free tier)
+  Email     →  Nodemailer + Gmail SMTP
+  Payments  →  Stripe (subscriptions + webhooks)
+  Hosting   →  Vercel
+
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
