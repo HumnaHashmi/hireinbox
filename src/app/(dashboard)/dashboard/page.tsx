@@ -77,6 +77,8 @@ function todayLabel() {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  /* Toggle this to false to preview the empty state */
+  const hasCampaigns = CAMPAIGNS.length > 0;
 
   return (
     <div style={{ background: "#F8FAFC", minHeight: "100vh", padding: "36px 40px", position: "relative" }}>
@@ -88,7 +90,7 @@ export default function DashboardPage() {
             {greeting(user?.name ?? "Humna")}
           </h1>
           <p style={{ fontSize: 14, color: "#475569", marginTop: 4 }}>
-            Here&apos;s your application overview
+            {hasCampaigns ? "Here's your application overview" : "Let's get your job search started"}
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -112,7 +114,61 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Stats cards ── */}
+      {/* ── Empty state ── */}
+      {!hasCampaigns && (
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center",
+          justifyContent: "center", textAlign: "center",
+          paddingTop: 80, paddingBottom: 80,
+        }}>
+          {/* Envelope illustration */}
+          <div style={{
+            width: 80, height: 80, borderRadius: 20,
+            background: "#EEF2FF",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            marginBottom: 24,
+          }}>
+            <svg width="40" height="40" fill="none" stroke="#4F46E5" strokeWidth={1.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
+            </svg>
+          </div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "#0F172A", marginBottom: 8 }}>
+            No campaigns yet
+          </h2>
+          <p style={{ fontSize: 14, color: "#475569", maxWidth: 360, lineHeight: 1.6, marginBottom: 8 }}>
+            Upload your CV on your profile, then create a campaign to start sending AI-powered job application emails.
+          </p>
+          <p style={{ fontSize: 13, color: "#94A3B8", marginBottom: 28 }}>Takes less than 2 minutes to set up.</p>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Link
+              href="/dashboard/profile"
+              style={{
+                height: 42, padding: "0 20px", lineHeight: "42px",
+                background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 8,
+                fontSize: 13, fontWeight: 600, color: "#475569",
+                textDecoration: "none",
+              }}
+            >
+              Upload CV first
+            </Link>
+            <Link
+              href="/dashboard/new-campaign"
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                height: 42, padding: "0 20px",
+                background: "#4F46E5", borderRadius: 8,
+                fontSize: 13, fontWeight: 600, color: "#FFFFFF",
+                textDecoration: "none",
+              }}
+            >
+              <PlusIcon /> Create first campaign
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* ── Stats cards (only when data exists) ── */}
+      {hasCampaigns && (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 32 }}>
         {STATS.map(({ label, value, color, iconColor, icon }) => (
           <div key={label} style={{
@@ -131,8 +187,10 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+      )}
 
-      {/* ── Recent campaigns ── */}
+      {/* ── Recent campaigns (only when data exists) ── */}
+      {hasCampaigns && (
       <div style={{ marginBottom: 28 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <h2 style={{ fontSize: 16, fontWeight: 600, color: "#0F172A" }}>Recent Campaigns</h2>
@@ -191,6 +249,7 @@ export default function DashboardPage() {
           ))}
         </div>
       </div>
+      )}
 
       {/* ── Quick tips ── */}
       <div style={{

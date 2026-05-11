@@ -18,12 +18,11 @@ export function RegisterForm() {
     if (!fd.name || String(fd.name).trim().length < 2) errs.name = "Name must be at least 2 characters";
     if (!fd.email) errs.email = "Email is required";
     if (!fd.password || String(fd.password).length < 8) errs.password = "Password must be at least 8 characters";
-    if (!fd.role) errs.role = "Please select a role";
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setErrors({});
     setLoading(true);
     try {
-      await register({ name: fd.name as string, email: fd.email as string, password: fd.password as string, role: fd.role as "candidate" | "recruiter" });
+      await register({ name: fd.name as string, email: fd.email as string, password: fd.password as string, role: "candidate" });
     } catch (err) {
       setServerError(err instanceof ApiClientError ? err.message : "Something went wrong. Try again.");
     } finally { setLoading(false); }
@@ -49,18 +48,6 @@ export function RegisterForm() {
       {field("Full name", "name", "text", "Jane Smith")}
       {field("Email", "email", "email", "you@example.com")}
       {field("Password", "password", "password", "••••••••")}
-      <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" style={{ color: "#475569" }}>I am a</label>
-        <div className="grid grid-cols-2 gap-2">
-          {(["candidate", "recruiter"] as const).map((r) => (
-            <label key={r} className="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all" style={{ borderColor: "#E2E8F0" }}>
-              <input type="radio" name="role" value={r} className="accent-[#4F46E5]" />
-              <span className="capitalize" style={{ color: "#475569" }}>{r}</span>
-            </label>
-          ))}
-        </div>
-        {errors.role && <p className="text-xs" style={{ color: "#E11D48" }}>{errors.role}</p>}
-      </div>
       {serverError && <p className="text-sm px-3 py-2 rounded-lg" style={{ background: "#FFF1F2", color: "#E11D48" }}>{serverError}</p>}
       <button type="submit" disabled={loading} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-60" style={{ background: "#4F46E5" }}>
         {loading ? "Creating account…" : "Create account"}

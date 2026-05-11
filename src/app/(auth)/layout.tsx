@@ -13,10 +13,12 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           <p className="text-2xl font-bold text-white">HireInbox</p>
           <p className="mt-2 text-sm" style={{ color: "#94A3B8" }}>AI-Powered Job Application Email Platform</p>
         </div>
-        <blockquote>
-          <p className="text-white/80 text-lg italic leading-relaxed">&quot;I sent 40 applications in one afternoon. Got 3 interviews within a week.&quot;</p>
-          <p className="mt-3 text-sm font-semibold" style={{ color: "#94A3B8" }}>— Fatima, Software Engineer</p>
-        </blockquote>
+        <div>
+          <p className="text-2xl font-bold text-white leading-snug">Built for job seekers.</p>
+          <p className="mt-3 text-sm leading-relaxed" style={{ color: "#94A3B8" }}>
+            Upload your CV once, paste HR emails, and let AI write a personalised email for every company — in seconds.
+          </p>
+        </div>
         <p className="text-xs" style={{ color: "#475569" }}>© 2025 HireInbox</p>
       </div>
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 bg-white">

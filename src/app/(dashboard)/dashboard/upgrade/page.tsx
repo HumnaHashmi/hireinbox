@@ -97,7 +97,7 @@ export default function UpgradePage() {
                 background: "#D97706", color: "#FFFFFF",
                 borderRadius: 4, padding: "1px 6px",
               }}>
-                −22%
+  −22%
               </span>
             </button>
           </div>
